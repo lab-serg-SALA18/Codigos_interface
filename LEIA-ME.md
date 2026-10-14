@@ -27,7 +27,7 @@ Abra o arquivo e confira/ajuste **uma vez só**:
 ```
 PASTA_PROJETO  = r"C:\Users\lab\Desktop\NV\(seu nome)\Codigos"
 PASTA_DADOS_BASE = r"C:\Users\lab\Desktop\NV\(seu nome)"
-TELEGRAM_CHAT_ID = "5867724350"
+TELEGRAM_CHAT_ID = "123456789"
 TELEGRAM_ATIVO_PADRAO = True
 ```
 
