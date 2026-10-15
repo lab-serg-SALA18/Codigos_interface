@@ -71,26 +71,30 @@ def _ler_saida(processo, log_callback):
 def iniciar_servidor_nv(log_callback=None):
     """Sobe o NVserver.py no Python 3.11, em segundo plano, e devolve o Popen."""
     if not os.path.isfile(cfg.PYTHON_311_EXE):
-        raise RuntimeError(
-            f"Python 3.11 não encontrado em:\n{cfg.PYTHON_311_EXE}\n"
-            "Ajuste PYTHON_311_EXE em configuracoes_lab.py."
-        )
+        raise RuntimeError(f"Python 3.11 não encontrado em:\n{cfg.PYTHON_311_EXE}\n"
+            "Ajuste PYTHON_311_EXE em configuracoes_lab.py.")
+    
     if not os.path.isdir(cfg.PASTA_PROJETO):
-        raise RuntimeError(
-            f"Pasta do projeto não encontrada:\n{cfg.PASTA_PROJETO}\n"
-            "Ajuste PASTA_PROJETO em configuracoes_lab.py."
-        )
+        raise RuntimeError(f"Pasta do projeto não encontrada:\n{cfg.PASTA_PROJETO}\n"
+            "Ajuste PASTA_PROJETO em configuracoes_lab.py.")
+    
     if not os.path.isfile(os.path.join(cfg.PASTA_PROJETO, "NVserver.py")):
-        raise RuntimeError(
-            f"NVserver.py não encontrado dentro de:\n{cfg.PASTA_PROJETO}"
-        )
+        raise RuntimeError(f"NVserver.py não encontrado dentro de:\n{cfg.PASTA_PROJETO}")
 
     processo = subprocess.Popen(
-        [cfg.PYTHON_311_EXE, "NVserver.py"],
-        cwd=cfg.PASTA_PROJETO,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    [cfg.PYTHON_311_EXE, "NVserver.py"],
+    cwd=cfg.PASTA_PROJETO,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+    bufsize=1,
     )
+
+    threading.Thread(
+        target=_ler_saida,
+        args=(processo, log_callback),
+        daemon=True,
+    ).start()
 
     return processo
 
