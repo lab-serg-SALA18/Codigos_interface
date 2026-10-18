@@ -123,179 +123,352 @@ def _estimar_frequencia_fft(t, y):
 
 
 # ===================================================================== #
+# VALIDAÇÃO E AJUDA PARA AJUSTES
+# ===================================================================== #
+def _validar_dados_ajuste(t, y, min_pontos=4):
+    """Valida os vetores antes de chamar o otimizador."""
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    if t.ndim != 1 or y.ndim != 1:
+        return None, None, "Os tempos e o sinal precisam ser vetores 1D."
+    if len(t) != len(y):
+        return None, None, "O vetor de tempos e o sinal têm tamanhos diferentes."
+    if len(t) < min_pontos:
+        return None, None, "Poucos pontos para ajustar."
+    if not np.all(np.isfinite(t)) or not np.all(np.isfinite(y)):
+        return None, None, "Os dados contêm NaN ou infinito."
+    if np.any(np.diff(t) <= 0):
+        return None, None, "Os tempos precisam estar em ordem estritamente crescente e sem repetição."
+    if np.ptp(t) <= 0:
+        return None, None, "O intervalo temporal é nulo."
+    if np.ptp(y) <= 1e-12 * max(1.0, float(np.max(np.abs(y)))):
+        return None, None, "O sinal não apresenta variação suficiente para o ajuste."
+    return t, y, None
+
+
+def _melhor_curve_fit(modelo, t, y, iniciais, limites, maxfev=30000):
+    """Testa vários chutes iniciais e devolve o ajuste com menor soma de resíduos."""
+    melhor = None
+    erros = []
+    for p0 in iniciais:
+        try:
+            popt, pcov = curve_fit(
+                modelo, t, y, p0=p0, bounds=limites, maxfev=maxfev
+            )
+            previsto = modelo(t, *popt)
+            rss = float(np.sum((y - previsto) ** 2))
+            if np.isfinite(rss) and (melhor is None or rss < melhor[0]):
+                melhor = (rss, popt, pcov)
+        except Exception as exc:
+            erros.append(str(exc))
+    if melhor is None:
+        detalhe = erros[-1] if erros else "nenhum candidato convergiu"
+        raise RuntimeError(detalhe)
+    return melhor[1], melhor[2]
+
+
+def _erro_parametro(pcov, indice, fator=1.0):
+    try:
+        variancia = float(pcov[indice, indice])
+        if np.isfinite(variancia) and variancia > 0:
+            return float(np.sqrt(variancia) * fator)
+    except Exception:
+        pass
+    return float("nan")
+
+
+def _avisos_qualidade(r2, erro, valor, T_variavel, span):
+    """Heurísticas conservadoras: não descartam o fit, mas avisam quando desconfiar."""
+    avisos = []
+    if not np.isfinite(r2) or r2 < 0.80:
+        avisos.append("R² baixo: a curva pode não descrever bem os dados.")
+    if not np.isfinite(erro):
+        avisos.append("A incerteza não pôde ser estimada de forma confiável.")
+    elif np.isfinite(valor) and abs(valor) > 0 and erro / abs(valor) > 0.5:
+        avisos.append("A incerteza é maior que 50% do valor ajustado.")
+    if np.isfinite(T_variavel) and T_variavel > 5.0 * span:
+        avisos.append("A janela temporal é curta comparada ao tempo de decaimento ajustado.")
+    return avisos
+
+
+# ===================================================================== #
 # AJUSTES ESPECÍFICOS
 # ===================================================================== #
 
-def ajustar_exponencial(t, y, nome="T", estica=True, unidade="ns"):
-    """T1 / T2 (Hahn, CPMG) — decaimento exponencial simples ou esticado."""
-    t = np.asarray(t, dtype=float)
-    y = np.asarray(y, dtype=float)
-    if len(t) < 4:
-        return {"sucesso": False, "mensagem": "Poucos pontos para ajustar."}
+def ajustar_exponencial(
+    t, y, nome="T", estica=True, unidade="ns",
+    fator_tempo_total=1.0, fator_conversao=1000.0,
+):
+    """
+    Ajusta decaimento simples ou esticado.
 
-    span = (t[-1] - t[0]) or 1.0
-    T0 = span / 2.0
-    A0 = (y[0] - y[-1]) or (y.max() - y.min()) or 1.0
-    C0 = float(y[-1])
+    fator_tempo_total converte a variável varrida no tempo físico total.
+    Ex.: em HAN, t é cada intervalo tau, portanto o tempo livre total é 2*t.
+
+    fator_conversao converte a unidade do eixo para a unidade apresentada:
+    1000 para ns->us ou us->ms; 1 para manter ns->ns.
+    """
+    t, y, erro = _validar_dados_ajuste(t, y, min_pontos=4)
+    if erro:
+        return {"sucesso": False, "mensagem": erro}
+    if not np.isfinite(fator_tempo_total) or fator_tempo_total <= 0:
+        return {"sucesso": False, "mensagem": "fator_tempo_total precisa ser positivo."}
+    if not np.isfinite(fator_conversao) or fator_conversao <= 0:
+        return {"sucesso": False, "mensagem": "fator_conversao precisa ser positivo."}
+
+    span = float(t[-1] - t[0])
+    passo_min = float(np.min(np.diff(t)))
+    T_min = max(span * 1e-9, 1e-9)
+    T_chutes = sorted(set(max(T_min * 10.0, span * r) for r in (0.1, 0.25, 0.5, 1.0, 2.0, 5.0)))
+    C0 = float(np.median(y[-max(2, len(y) // 5):]))
+    A0 = float(y[0] - C0)
+    if abs(A0) < 0.05 * np.ptp(y):
+        A0 = float(y[0] - y[-1])
+    if abs(A0) < 1e-12:
+        A0 = float(np.ptp(y))
 
     try:
         if estica:
-            popt, pcov = curve_fit(
-                _exp_stretched, t, y,
-                p0=[A0, T0, C0, 1.0],
-                bounds=([-np.inf, 1e-6, -np.inf, 0.3], [np.inf, np.inf, np.inf, 4.0]),
-                maxfev=20000,
+            p_chutes = (0.6, 1.0, 1.5, 2.0)
+            iniciais = [
+                [A0, T0, C0, p0]
+                for T0 in T_chutes
+                for p0 in p_chutes
+            ]
+            popt, pcov = _melhor_curve_fit(
+                _exp_stretched, t, y, iniciais,
+                ([-np.inf, T_min, -np.inf, 0.3],
+                 [np.inf, np.inf, np.inf, 4.0]),
+                maxfev=25000,
             )
             A, T, C, p = popt
-            var_T = pcov[1, 1]
-            curva = lambda tt, p=popt: _exp_stretched(tt, *p)
+            modelo = lambda tt, pars=popt: _exp_stretched(tt, *pars)
             extra = {"expoente_estica": float(p)}
+            n_parametros = 4
         else:
-            popt, pcov = curve_fit(
-                _exp_decay, t, y,
-                p0=[A0, T0, C0],
-                bounds=([-np.inf, 1e-6, -np.inf], [np.inf, np.inf, np.inf]),
-                maxfev=20000,
+            iniciais = [[A0, T0, C0] for T0 in T_chutes]
+            popt, pcov = _melhor_curve_fit(
+                _exp_decay, t, y, iniciais,
+                ([-np.inf, T_min, -np.inf], [np.inf, np.inf, np.inf]),
+                maxfev=25000,
             )
             A, T, C = popt
-            var_T = pcov[1, 1]
-            curva = lambda tt, p=popt: _exp_decay(tt, *p)
+            modelo = lambda tt, pars=popt: _exp_decay(tt, *pars)
             extra = {}
-    except Exception as e:
-        return {"sucesso": False, "mensagem": f"Ajuste falhou: {e}"}
-    
-    if nome == "T1":
-        erro_T = float(np.sqrt(var_T)/1000) if np.isfinite(var_T) and var_T > 0 else float("nan")
-    else:
-        erro_T = float(np.sqrt(var_T)) if np.isfinite(var_T) and var_T > 0 else float("nan")
-    t_fino = np.linspace(t.min(), t.max(), 300)
-    r2 = calcular_r2(y, curva(t))
+            n_parametros = 3
+    except Exception as exc:
+        return {"sucesso": False, "mensagem": "Ajuste exponencial falhou: {}".format(exc)}
+
+    T_fisico = float(T * fator_tempo_total)
+    erro_T = _erro_parametro(pcov, 1, fator_tempo_total / fator_conversao)
+    valor = T_fisico / fator_conversao
+    t_fino = np.linspace(t.min(), t.max(), 400)
+    y_fit = modelo(t)
+    r2 = calcular_r2(y, y_fit)
+    avisos = _avisos_qualidade(r2, erro_T, valor, T, span)
+
     resultado = {
         "sucesso": True,
         "rotulo": nome,
-        "valor": float(T/1000),
+        "valor": float(valor),
         "unidade": unidade,
         "incerteza": erro_T,
-        "r2": r2,
-        "curva_fit": (t_fino, curva(t_fino)),
+        "r2": float(r2),
+        "curva_fit": (t_fino, modelo(t_fino)),
+        "confiavel": len(avisos) == 0,
+        "avisos": avisos,
+        "escala_ajuste": float(T),
+        "fator_tempo_total": float(fator_tempo_total),
     }
     resultado.update(extra)
     return resultado
 
-
 def ajustar_rabi(t, y):
-    """Frequência de Rabi — ajuste de cosseno amortecido por exponencial estirada (quando converge)."""
-    t = np.asarray(t, dtype=float)
-    y = np.asarray(y, dtype=float)
-    if len(t) < 6:
-        return {"sucesso": False, "mensagem": "Poucos pontos para ajustar."}
+    """Ajuste amortecido de Rabi com múltiplos chutes iniciais e aviso de qualidade."""
+    t, y, erro = _validar_dados_ajuste(t, y, min_pontos=6)
+    if erro:
+        return {"sucesso": False, "mensagem": erro}
 
-    f0 = _estimar_frequencia_fft(t, y)
-    if f0 <= 0:
-        f0 = 1.0 / max(2 * (t[-1] - t[0]), 1e-9)
-    A0 = (y.max() - y.min()) / 2.0 or 1.0
-    C0 = float(y.mean())
-    T0 = (t[-1] - t[0]) * 2.0 or 1.0
-    n0 = 1.0
+    span = float(t[-1] - t[0])
+    dt = float(np.median(np.diff(t)))
+    nyquist = 0.5 / dt
+    f_fft = _estimar_frequencia_fft(t, y)
+    f_res = 1.0 / span
+    if not np.isfinite(f_fft) or f_fft <= 0:
+        f_fft = f_res
+    f_min = max(1e-12, f_res * 0.02)
+    f_max = nyquist * 0.999
+    f_chutes = sorted(set(
+        min(max(float(f), f_min * 2.0), f_max * 0.95)
+        for f in (f_fft, 0.8 * f_fft, 1.2 * f_fft, f_res)
+    ))
 
-    f = erro_f = curva = None
-    t2_star_ns = erro_t2_star_ns = None
-    n_fit = erro_n = None
+    A0 = float(np.ptp(y) / 2.0)
+    C0 = float(np.mean(y))
+    T0s = (span, 2.0 * span, 4.0 * span)
+    T_min = max(span * 1e-9, 1e-9)
+    iniciais = [
+        [A0, f0, fase, T0, C0, 1.0]
+        for f0 in f_chutes
+        for fase in (0.0, np.pi / 2.0)
+        for T0 in T0s
+    ]
+    limites = (
+        [-np.inf, f_min, -4.0 * np.pi, T_min, -np.inf, 0.1],
+        [np.inf, f_max, 4.0 * np.pi, np.inf, np.inf, 5.0],
+    )
 
     try:
-        # p0: [A, f, phi, T, C, n]
-        popt, pcov = curve_fit(
-            _cosseno_amortecido, t, y, p0=[A0, f0, 0.0, T0, C0, n0],
-            bounds=([-np.inf, -np.inf, -np.inf, 1e-6, -np.inf, 0.1], [np.inf, np.inf, np.inf, np.inf, np.inf, 5.0]),
-            maxfev=30000,
+        popt, pcov = _melhor_curve_fit(
+            _cosseno_amortecido, t, y, iniciais, limites, maxfev=30000
         )
-        f = abs(popt[1])
-        erro_f = float(np.sqrt(pcov[1, 1])) if np.isfinite(pcov[1, 1]) and pcov[1, 1] > 0 else float("nan")
-        curva = lambda tt, p=popt: _cosseno_amortecido(tt, *p)
-
-        t2_star_ns = float(popt[3])
-        var_t2 = pcov[3, 3]
-        erro_t2_star_ns = float(np.sqrt(var_t2)) if np.isfinite(var_t2) and var_t2 > 0 else float("nan")
-
-        n_fit = float(popt[5])
-        var_n = pcov[5, 5]
-        erro_n = float(np.sqrt(var_n)) if np.isfinite(var_n) and var_n > 0 else float("nan")
-    except Exception:
+        A, f_fit, phi, T, C, n_fit = popt
+        modelo = lambda tt, pars=popt: _cosseno_amortecido(tt, *pars)
+        erro_f = _erro_parametro(pcov, 1, 1000.0)
+        erro_T = _erro_parametro(pcov, 3)
+        erro_n = _erro_parametro(pcov, 5)
+        t2_star_ns = float(T)
+    except Exception as exc:
+        # Fallback transparente: o cosseno puro não permite medir T2* do Rabi.
         try:
-            popt, pcov = curve_fit(_cosseno_puro, t, y, p0=[A0, f0, 0.0, C0], maxfev=30000)
-            f = abs(popt[1])
-            erro_f = float(np.sqrt(pcov[1, 1])) if np.isfinite(pcov[1, 1]) and pcov[1, 1] > 0 else float("nan")
-            curva = lambda tt, p=popt: _cosseno_puro(tt, *p)
-        except Exception as e:
-            return {"sucesso": False, "mensagem": f"Ajuste de Rabi falhou: {e}"}
+            iniciais_puros = [
+                [A0, f0, fase, C0]
+                for f0 in f_chutes
+                for fase in (0.0, np.pi / 2.0)
+            ]
+            popt, pcov = _melhor_curve_fit(
+                _cosseno_puro, t, y, iniciais_puros,
+                ([-np.inf, f_min, -4.0 * np.pi, -np.inf],
+                 [np.inf, f_max, 4.0 * np.pi, np.inf]),
+                maxfev=30000,
+            )
+            A, f_fit, phi, C = popt
+            modelo = lambda tt, pars=popt: _cosseno_puro(tt, *pars)
+            erro_f = _erro_parametro(pcov, 1, 1000.0)
+            erro_T = float("nan")
+            erro_n = float("nan")
+            t2_star_ns = None
+            n_fit = None
+        except Exception as exc_puro:
+            return {"sucesso": False, "mensagem": "Ajuste de Rabi falhou: {} (fallback: {})".format(exc, exc_puro)}
 
-    if f is None or not np.isfinite(f) or f <= 0:
+    f_fit = abs(float(f_fit))
+    if not np.isfinite(f_fit) or f_fit <= 0:
         return {"sucesso": False, "mensagem": "Não foi possível identificar uma oscilação clara."}
 
-    valor_mhz = f * 1000.0
-    erro_mhz = erro_f * 1000.0 if np.isfinite(erro_f) else erro_f
-    pulso_pi_ns = 1.0 / (2 * f)
+    valor_mhz = f_fit * 1000.0
+    pulso_pi_ns = 1.0 / (2.0 * f_fit)
+    t_fino = np.linspace(t.min(), t.max(), 400)
+    r2 = calcular_r2(y, modelo(t))
+    avisos = _avisos_qualidade(r2, erro_f, valor_mhz, T if t2_star_ns is not None else span, span)
+    if t2_star_ns is None:
+        avisos.append("Foi usado cosseno puro; T2* do envelope não foi determinado.")
 
-    t_fino = np.linspace(t.min(), t.max(), 300)
-    r2 = calcular_r2(y, curva(t))
     resultado = {
         "sucesso": True,
         "rotulo": "Frequência de Rabi",
         "valor": float(valor_mhz),
         "unidade": "MHz",
-        "incerteza": erro_mhz,
-        "curva_fit": (t_fino, curva(t_fino)),
+        "incerteza": erro_f,
+        "curva_fit": (t_fino, modelo(t_fino)),
         "pulso_pi_estimado_ns": float(pulso_pi_ns),
-        "r2": r2,
+        "r2": float(r2),
+        "confiavel": len(avisos) == 0,
+        "avisos": avisos,
     }
-
     if t2_star_ns is not None and np.isfinite(t2_star_ns) and t2_star_ns > 0:
-        resultado["t2_star_rabi_rotulo"] = "T2* (Rabi)"
-        resultado["t2_star_rabi_ns"] = t2_star_ns
-        resultado["t2_star_rabi_incerteza_ns"] = erro_t2_star_ns
-        resultado["expoente_n"] = n_fit
-        resultado["expoente_n_incerteza"] = erro_n
-
+        resultado.update({
+            "t2_star_rabi_rotulo": "T2* (Rabi)",
+            "t2_star_rabi_ns": float(t2_star_ns),
+            "t2_star_rabi_incerteza_ns": erro_T,
+            "expoente_n": float(n_fit),
+            "expoente_n_incerteza": erro_n,
+        })
     return resultado
 
-
 def ajustar_ramsey(t, y, unidade="ns"):
-    """T2* — tenta franja amortecida; se não convergir bem, cai para exponencial simples."""
-    t = np.asarray(t, dtype=float)
-    y = np.asarray(y, dtype=float)
-    if len(t) < 5:
-        return {"sucesso": False, "mensagem": "Poucos pontos para ajustar."}
+    """Ajuste das franjas de Ramsey com chutes múltiplos e validação do resultado."""
+    t, y, erro = _validar_dados_ajuste(t, y, min_pontos=5)
+    if erro:
+        return {"sucesso": False, "mensagem": erro}
 
-    f0 = _estimar_frequencia_fft(t, y)
-    A0 = (y.max() - y.min()) / 2.0 or 1.0
-    C0 = float(y.mean())
-    T0 = ((t[-1] - t[0]) / 2.0) or 1.0
+    span = float(t[-1] - t[0])
+    dt = float(np.median(np.diff(t)))
+    nyquist = 0.5 / dt
+    f_fft = _estimar_frequencia_fft(t, y)
+    f_res = 1.0 / span
+    if not np.isfinite(f_fft) or f_fft <= 0:
+        f_fft = f_res
+    f_min = max(1e-12, f_res * 0.02)
+    f_max = nyquist * 0.999
+    f_chutes = sorted(set(
+        min(max(float(f), f_min * 2.0), f_max * 0.95)
+        for f in (f_fft, 0.7 * f_fft, 1.3 * f_fft, f_res)
+    ))
+    T_min = max(span * 1e-9, 1e-9)
+    T_chutes = (max(span * 0.25, T_min * 10.0), span, 2.0 * span)
+    A0 = float(np.ptp(y) / 2.0)
+    C0 = float(np.mean(y))
+    iniciais = [
+        [A0, f0, fase, T0, C0]
+        for f0 in f_chutes
+        for fase in (0.0, np.pi / 2.0, -np.pi / 2.0)
+        for T0 in T_chutes
+    ]
 
     try:
-        popt, pcov = curve_fit(
-            _ramsey, t, y, p0=[A0, f0, 0.0, T0, C0],
-            bounds=([-np.inf, -np.inf, -np.inf, 1e-6, -np.inf], [np.inf, np.inf, np.inf, np.inf, np.inf]),
+        popt, pcov = _melhor_curve_fit(
+            _ramsey, t, y, iniciais,
+            ([-np.inf, f_min, -4.0 * np.pi, T_min, -np.inf],
+             [np.inf, f_max, 4.0 * np.pi, np.inf, np.inf]),
             maxfev=30000,
         )
-        T = popt[3]
-        var_T = pcov[3, 3]
-        erro_T = float(np.sqrt(var_T)) if np.isfinite(var_T) and var_T > 0 else float("nan")
-        curva = lambda tt, p=popt: _ramsey(tt, *p)
-        t_fino = np.linspace(t.min(), t.max(), 300)
-        r2 = calcular_r2(y, curva(t))
+        A, f_fit, phi, T, C = popt
+        modelo = lambda tt, pars=popt: _ramsey(tt, *pars)
+        erro_T = _erro_parametro(pcov, 3)
+        erro_f = _erro_parametro(pcov, 1)
+        t_fino = np.linspace(t.min(), t.max(), 400)
+        r2 = calcular_r2(y, modelo(t))
+        avisos = _avisos_qualidade(r2, erro_T, T, T, span)
+        if f_fit <= 1.1 * f_min:
+            avisos.append("A frequência de franja ficou próxima do limite inferior; verifique a dessintonia e o eixo temporal.")
+        if f_fit >= 0.95 * f_max:
+            avisos.append("A frequência de franja ficou próxima do limite de Nyquist; o passo temporal pode ser grande demais.")
+
         return {
             "sucesso": True,
             "rotulo": "T2*",
             "valor": float(T),
             "unidade": unidade,
             "incerteza": erro_T,
-            "r2": r2,
-            "curva_fit": (t_fino, curva(t_fino)),
-            "frequencia_franja": float(abs(popt[1])),
+            "r2": float(r2),
+            "curva_fit": (t_fino, modelo(t_fino)),
+            "frequencia_franja": float(abs(f_fit)),
+            "frequencia_franja_incerteza": erro_f,
+            "confiavel": len(avisos) == 0,
+            "avisos": avisos,
+            "modelo_usado": "Ramsey amortecido",
         }
-    except Exception:
-        return ajustar_exponencial(t, y, nome="T2*", estica=False, unidade=unidade)
-
+    except Exception as exc_ramsey:
+        # Sem franjas identificáveis, ainda tentamos obter apenas um envelope.
+        exp = ajustar_exponencial(
+            t, y, nome="T2*", estica=False, unidade=unidade,
+            fator_tempo_total=1.0, fator_conversao=1.0,
+        )
+        if exp.get("sucesso"):
+            exp["modelo_usado"] = "Exponencial simples (sem franja Ramsey confiável)"
+            exp.setdefault("avisos", []).append(
+                "O ajuste de Ramsey falhou ({}); o valor retornado é só um tempo de decaimento, não uma franja Ramsey ajustada.".format(exc_ramsey)
+            )
+            exp["confiavel"] = False
+            return exp
+        return {
+            "sucesso": False,
+            "mensagem": "O ajuste Ramsey falhou: {}. O ajuste exponencial também falhou: {}".format(
+                exc_ramsey, exp.get("mensagem", "erro desconhecido")
+            ),
+        }
 
 def analisar_eseem(t, y):
     """
@@ -340,7 +513,7 @@ def analisar_eseem(t, y):
 
 _UNIDADE_POR_SEQUENCIA = {
     "RABI": "ns", "T1": "ms", "HAN": "us", "RAM": "ns",
-    "CPMG2": "ns", "CPMG4": "ns", "CPMG8": "ns", "ESEEM": "ns",
+    "CPMG2": "us", "CPMG4": "us", "CPMG8": "us", "ESEEM": "ns",
 }
 
 
@@ -353,17 +526,27 @@ def ajuste_automatico(sequencia, tempos, sinal):
     unidade = _UNIDADE_POR_SEQUENCIA.get(seq, "ns")
     tempos = np.asarray(tempos, dtype=float)
     sinal = np.asarray(sinal, dtype=float)
+    if tempos.ndim != 1 or sinal.ndim != 1 or len(tempos) != len(sinal):
+        return {"sucesso": False, "mensagem": "Tempos e sinal precisam ser vetores 1D do mesmo tamanho."}
+    if len(tempos) > 1 and np.any(np.diff(tempos) <= 0):
+        return {"sucesso": False, "mensagem": "Os tempos precisam estar em ordem crescente e sem repetição."}
 
     if seq == "RABI":
         return ajustar_rabi(tempos, sinal)
     if seq == "T1":
-        return ajustar_exponencial(tempos, sinal, nome="T1", estica=False, unidade=unidade) 
+        return ajustar_exponencial(tempos, sinal, nome="T1", estica=False, unidade=unidade, fator_tempo_total=1.0, fator_conversao=1000.0)
     if seq == "HAN":
-        return ajustar_exponencial(tempos, sinal, nome="T2 (Hahn)", estica=True, unidade=unidade)
+        # GeradorSequencias usa time_value como cada intervalo tau: tempo livre total = 2*tau.
+        return ajustar_exponencial(tempos, sinal, nome="T2 (Hahn)", estica=True, unidade=unidade, fator_tempo_total=2.0, fator_conversao=1000.0)
     if seq == "RAM":
         return ajustar_ramsey(tempos, sinal, unidade=unidade)
     if seq.startswith("CPMG"):
-        return ajustar_exponencial(tempos, sinal, nome=f"T2 ({seq})", estica=True, unidade=unidade)
+        # No GeradorSequencias, o tempo total livre é 2*N*pi_pulsos*tempo_varrido.
+        try:
+            numero_pulsos_pi = int(seq.replace("CPMG", ""))
+        except ValueError:
+            return {"sucesso": False, "mensagem": "Sequência CPMG sem número de pulsos válido."}
+        return ajustar_exponencial(tempos, sinal, nome=f"T2 ({seq})", estica=True, unidade=unidade, fator_tempo_total=2.0 * numero_pulsos_pi, fator_conversao=1000.0)
     if seq == "ESEEM":
         return analisar_eseem(tempos, sinal)
 

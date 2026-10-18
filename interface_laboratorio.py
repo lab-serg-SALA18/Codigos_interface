@@ -762,6 +762,21 @@ class InterfaceLaboratorio:
                     self.tela.blit(render_i, (x + 20, y_cursor))
                     y_cursor += 20
 
+                if "frequencia_franja" in ajuste:
+                    # O detuning gerado na analise_automatica_3 é extraído aqui
+                    detuning_mhz = ajuste["frequencia_franja"] * 1000.0
+                    erro_detuning = ajuste.get("frequencia_franja_incerteza", float("nan")) * 1000.0
+                    
+                    texto_detuning = f"Detuning (Δf): {detuning_mhz:.3f} MHz"
+                    if erro_detuning == erro_detuning:  # descarta NaN
+                        texto_detuning += f" ± {erro_detuning:.3f} MHz"
+                        
+                    render_detuning = self.fonte_pequena.render(
+                        texto_detuning, True, CORES["destaque"]
+                    )
+                    self.tela.blit(render_detuning, (x + 20, y_cursor))
+                    y_cursor += 20
+
                 if "pulso_pi_estimado_ns" in ajuste:
                     render_p = self.fonte_pequena.render(
                         f"pulso pi estimado: {ajuste['pulso_pi_estimado_ns']:.1f} ns",
