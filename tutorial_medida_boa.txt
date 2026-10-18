@@ -1,0 +1,8 @@
+- Centralize o laser no centro da antena
+- Deixe 24x24
+- Coloque o gain no mínimo
+- Deixe levemente desfocado. Para ajustar o desfoque:
+-- Utilize a função de histograma e deixe a linha do 
+   mínimo e da média super próximas mas sem encostar
+-- Seu objetivo é ver, quando o gain estiver alto, uma 
+bola com intensidade quase constante no meio

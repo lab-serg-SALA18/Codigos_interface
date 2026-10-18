@@ -379,8 +379,8 @@ class ExperimentoSequencia:
             self.sock_qiskit.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
             self.iniciar_camera()
-            #self.definir_ganho(14)
-            self.definir_ganho(-2.815)
+            self.definir_ganho(14)
+            #self.definir_ganho(-2.815)
             self.definir_shutter(20)
 
             self.conectar_gerador_mw()

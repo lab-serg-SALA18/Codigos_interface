@@ -23,11 +23,11 @@ import json
 PYTHON_311_EXE = r"C:\Users\lab\Desktop\NV\python3_11\Scripts\python.exe"
 
 # Pasta onde ficam os códigos
-PASTA_PROJETO = r"C:\Users\lab\Desktop\NV\Joao_pedro\Codigos"
+PASTA_PROJETO = r"C:\Users\lab\Desktop\NV\(Seu nome)\Codigos"
 
 # Pasta raiz onde os DADOS de cada experimento são salvos. Cada experimento
 # (Rabi, T1, HAN, ODMR...) ganha sua própria subpasta aqui dentro automaticamente
-PASTA_DADOS_BASE = r"C:\Users\lab\Desktop\NV\Joao_pedro"
+PASTA_DADOS_BASE = r"C:\Users\lab\Desktop\NV\(Seu nome)"
 
 # Arquivo que a interface (re)escreve antes de cada medida pulsada, com os
 # parâmetros escolhidos na tela. O NVserver.py (Python 3.11) lê esse arquivo
@@ -38,8 +38,8 @@ ARQUIVO_PARAMETROS_SEQUENCIA = os.path.join(PASTA_PROJETO, "ParametrosSequencias
 # 2) TELEGRAM (aviso automático quando uma medida termina)
 # ======================================================================= #
 TELEGRAM_TOKEN = "8625624126:AAFuO7RBJYfC8te1yITXtIIGvdLh2txgjN0"
-TELEGRAM_CHAT_ID = "5867724350"
-TELEGRAM_ATIVO_PADRAO = True  # mude para False se quiser desligar os avisos
+TELEGRAM_CHAT_ID = "123456789" # mude para o seu chat_id 
+TELEGRAM_ATIVO_PADRAO = False  # mude para False se quiser desligar os avisos
 
 # ======================================================================= #
 # 3) GERADOR DE MICROONDAS (GPIB / VISA)
