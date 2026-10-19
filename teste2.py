@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Análise manual e automática de Rabi a partir de pontos_experimentais.csv.
 
-Coloque este programa na mesma pasta do CSV gerado por converter_h5f_para_csv.py.
+Altere o  BASE_DIR no início do código para o caminho da pasta que contém pontos_experimentais.csv.
 Modelo: y(t) = A exp(-((t/T2*)**n)) cos(2*pi*f*t + phi) + C.
 Unidades: t e T2* em ns; frequência f em MHz; fase em rad.
 """

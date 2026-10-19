@@ -1,16 +1,16 @@
 {
   "ODMR": {
     "mw_freq_center": 3009.0,
-    "mw_freq_range": 4.0,
-    "mw_freq_step": 0.25,
-    "naverage": 200,
+    "mw_freq_range": 15.0,
+    "mw_freq_step": 1.0,
+    "naverage": 50,
     "mw_power": -20.0,
     "shutter_time_ms": 20.0
   },
   "RABI": {
     "time_start": 0,
     "time_stop": 200,
-    "time_step": 20,
+    "time_step": 30,
     "frequency": 3009.2,
     "mw_power": 5.0,
     "images_average": 10,
@@ -34,15 +34,15 @@
   },
   "HAN": {
     "time_start": 0,
-    "time_stop": 8000,
-    "time_step": 100,
+    "time_stop": 5000,
+    "time_step": 25,
     "frequency": 3009.2,
     "mw_power": 5.0,
-    "images_average": 1,
-    "measure_loops": 50,
+    "images_average": 100,
+    "measure_loops": 25,
     "laser_time_us": 600,
     "pi_pulse_time_ns": 111,
-    "backend_photo_on": false,
+    "backend_photo_on": true,
     "plotar_fit": true
   },
   "RAM": {
@@ -105,12 +105,12 @@
     "time_start": 0,
     "time_stop": 5000,
     "time_step": 100,
-    "frequency": 3009.0,
+    "frequency": 3009.2,
     "mw_power": 5.0,
-    "images_average": 10,
+    "images_average": 1,
     "measure_loops": 50,
     "laser_time_us": 600,
-    "pi_pulse_time_ns": 11,
+    "pi_pulse_time_ns": 111,
     "dynamic_shutter": true,
     "backend_photo_on": true,
     "plotar_fit": true
