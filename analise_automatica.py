@@ -93,7 +93,6 @@ def _exp_stretched(t, A, T, C, p):
 
 
 def _cosseno_amortecido(t, A, f, phi, T, C, n=1.0):
-    """Cosseno amortecido por exponencial estirada: A * exp(-(t/T)^n) * cos(2*pi*f*t + phi) + C"""
     return A * np.exp(-((t / T) ** n)) * np.cos(2 * np.pi * f * t + phi) + C
 
 
@@ -198,8 +197,7 @@ def _avisos_qualidade(r2, erro, valor, T_variavel, span):
 
 def ajustar_exponencial(
     t, y, nome="T", estica=True, unidade="ns",
-    fator_tempo_total=1.0, fator_conversao=1000.0,
-):
+    fator_tempo_total=1.0, fator_conversao=1000.0,):
     """
     Ajusta decaimento simples ou esticado.
 
@@ -536,12 +534,10 @@ def ajuste_automatico(sequencia, tempos, sinal):
     if seq == "T1":
         return ajustar_exponencial(tempos, sinal, nome="T1", estica=False, unidade=unidade, fator_tempo_total=1.0, fator_conversao=1000.0)
     if seq == "HAN":
-        # GeradorSequencias usa time_value como cada intervalo tau: tempo livre total = 2*tau.
         return ajustar_exponencial(tempos, sinal, nome="T2 (Hahn)", estica=True, unidade=unidade, fator_tempo_total=2.0, fator_conversao=1000.0)
     if seq == "RAM":
         return ajustar_ramsey(tempos, sinal, unidade=unidade)
     if seq.startswith("CPMG"):
-        # No GeradorSequencias, o tempo total livre é 2*N*pi_pulsos*tempo_varrido.
         try:
             numero_pulsos_pi = int(seq.replace("CPMG", ""))
         except ValueError:

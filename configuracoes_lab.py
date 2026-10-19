@@ -23,7 +23,7 @@ import json
 PYTHON_311_EXE = r"C:\Users\lab\Desktop\NV\python3_11\Scripts\python.exe"
 
 # Pasta onde ficam os códigos
-PASTA_PROJETO = r"C:\Users\lab\Desktop\NV\Joao_pedro\Codigos"
+PASTA_PROJETO = r"C:\Users\lab\Desktop\NV\Joao_pedro\Codigos_interface"
 
 # Pasta raiz onde os DADOS de cada experimento são salvos. Cada experimento
 # (Rabi, T1, HAN, ODMR...) ganha sua própria subpasta aqui dentro automaticamente
@@ -150,7 +150,6 @@ EXPERIMENTOS = {
             "measure_loops": 150,
             "laser_time_us": 500,
             "pi_pulse_time_ns": 170,
-            "dynamic_shutter": True,
             "backend_photo_on": False,
             "plotar_fit": True,
         },

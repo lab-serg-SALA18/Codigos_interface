@@ -402,8 +402,7 @@ class InterfaceLaboratorio:
             self.thread_execucao = threading.Thread(target=self._executar_odmr_thread, args=(params,), daemon=True)
         else:
             self.thread_execucao = threading.Thread(
-                target=self._executar_sequencia_thread, args=(sequencia, params), daemon=True
-            )
+                target=self._executar_sequencia_thread, args=(sequencia, params), daemon=True)
         self.thread_execucao.start()
 
     def parar_execucao(self):
@@ -474,10 +473,13 @@ class InterfaceLaboratorio:
             )
             time_array = range(int(params["time_start"]), int(params["time_stop"] + params["time_step"]), int(params["time_step"]))
 
+            if sequencia == "T1":
+                dynamic_shutter = False
+            if sequencia == "HAN":
+                dynamic_shutter = True
             if "dynamic_shutter" in params:
                 dynamic_shutter = params["dynamic_shutter"]
-            else:
-                dynamic_shutter = False
+
 
             exp = experimento_sequencia.ExperimentoSequencia(
                 sequencia=sequencia,

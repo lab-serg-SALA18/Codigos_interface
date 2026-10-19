@@ -30,7 +30,7 @@ import os
 import socket
 import json
 import time
-
+import csv
 import numpy as np
 import matplotlib.pyplot as plt
 import h5py
@@ -167,12 +167,109 @@ class ExperimentoSequencia:
         os.makedirs(pasta_graficos, exist_ok=True)
 
     def salvar_arquivo_h5(self, data_mw_on, data_background, data_mw_off):
-        with h5py.File(os.path.join(self.pasta_dados_medida,"Cam_MW_on.h5f"), "w") as arq:
+        """Salva os três H5F e gera automaticamente o CSV dos pontos."""
+        with h5py.File(os.path.join(self.pasta_dados_medida, "Cam_MW_on.h5f"), "w") as arq:
             arq.create_dataset("dataset", data=data_mw_on, dtype="Float64", compression="gzip")
-        with h5py.File(os.path.join(self.pasta_dados_medida,"Cam_background.h5f"), "w") as arq:
+
+        with h5py.File(os.path.join(self.pasta_dados_medida, "Cam_background.h5f"), "w") as arq:
             arq.create_dataset("dataset", data=data_background, dtype="Float64", compression="gzip")
-        with h5py.File(os.path.join(self.pasta_dados_medida,"Cam_MW_off.h5f"), "w") as arq:
+
+        with h5py.File(os.path.join(self.pasta_dados_medida, "Cam_MW_off.h5f"), "w") as arq:
             arq.create_dataset("dataset", data=data_mw_off, dtype="Float64", compression="gzip")
+
+        try:
+            caminho_csv = self.gerar_csv_pontos()
+        except Exception as exc:
+            self.progress_callback(mensagem="AVISO: os H5F foram salvos, mas o CSV não pôde ser gerado: {}".format(exc))
+
+    def _somar_dataset_h5(self, nome_arquivo):
+        """Lê o dataset 3D de um H5F e soma os pixels para cada ponto temporal."""
+        caminho = os.path.join(self.pasta_dados_medida, nome_arquivo)
+        with h5py.File(caminho, "r") as arq:
+            if "dataset" not in arq:
+                raise KeyError("O arquivo {} não contém o dataset 'dataset'.".format(nome_arquivo))
+            dados = np.asarray(arq["dataset"], dtype=np.float64)
+
+        return np.sum(dados, axis=(0, 1), dtype=np.float64)
+
+    @staticmethod
+    def _normalizar_minmax(valores):
+        valores = np.asarray(valores, dtype=np.float64)
+        resultado = np.full(valores.shape, np.nan, dtype=np.float64)
+        validos = np.isfinite(valores)
+
+        if not np.any(validos):
+            return resultado
+
+        minimo = float(np.min(valores[validos]))
+        amplitude = float(np.max(valores[validos]) - minimo)
+        if not np.isfinite(amplitude) or amplitude <= 0:
+            return resultado
+
+        resultado[validos] = (valores[validos] - minimo) / amplitude
+        return resultado
+
+
+    def gerar_csv_pontos(self):
+        """
+        Gera pontos_experimentais.csv a partir dos H5F acabados de salvar.
+        O eixo temporal utiliza self.time_array, evitando passo temporal fixo.
+        """
+        soma_on = self._somar_dataset_h5("Cam_MW_on.h5f")
+        soma_off = self._somar_dataset_h5("Cam_MW_off.h5f")
+
+        if len(soma_on) != len(self.time_array) or len(soma_off) != len(self.time_array):
+            raise ValueError("Número de pontos dos H5F não corresponde a self.time_array.")
+
+        if self.backend_photo_on:
+            soma_background = self._somar_dataset_h5("Cam_background.h5f")
+            if len(soma_background) != len(self.time_array):
+                raise ValueError("Número de pontos do background não corresponde a self.time_array.")
+            numerador = soma_on - soma_background
+            denominador = soma_off - soma_background
+        else:
+            soma_background = np.full_like(soma_on, np.nan, dtype=np.float64)
+            numerador = soma_on
+            denominador = soma_off
+
+        razao = np.full_like(soma_on, np.nan, dtype=np.float64)
+        validos = (
+            np.isfinite(numerador)
+            & np.isfinite(denominador)
+            & (np.abs(denominador) > np.finfo(np.float64).eps))
+        razao[validos] = numerador[validos] / denominador[validos]
+        sinal_normalizado = self._normalizar_minmax(razao)
+
+        tempos = np.asarray(self.time_array, dtype=np.float64)
+        unidade_tempo = "us" if self.sequencia_nome.upper() == "T1" else "ns"
+        coluna_tempo = "tempo_us" if unidade_tempo == "us" else "tempo_ns"
+        caminho_csv = os.path.join(self.pasta_dados_medida, "pontos_experimentais.csv")
+
+
+        colunas = [
+            "indice_ponto", coluna_tempo,
+            "soma_pixels_MW_on", "soma_pixels_MW_off", "soma_pixels_background",
+            "razao_sinal", "sinal_normalizado", "sinal_normalizado_0_1",
+        ]
+
+        with open(caminho_csv, "w", newline="", encoding="utf-8-sig") as arquivo_csv:
+            escritor = csv.writer(arquivo_csv)
+            escritor.writerow(colunas)
+            for i, tempo in enumerate(tempos):
+                razao_i = razao[i]
+                normalizado_i = sinal_normalizado[i]
+                escritor.writerow([
+                    i,
+                    "{:.12g}".format(tempo),
+                    "{:.12g}".format(soma_on[i]),
+                    "{:.12g}".format(soma_off[i]),
+                    ("{:.12g}".format(soma_background[i])
+                     if self.backend_photo_on and np.isfinite(soma_background[i]) else ""),
+                    "{:.12g}".format(razao_i) if np.isfinite(razao_i) else "",
+                    "{:.12g}".format(normalizado_i) if np.isfinite(normalizado_i) else "",
+                    "{:.12g}".format(normalizado_i) if np.isfinite(normalizado_i) else "",])
+
+        return caminho_csv
 
     # _________________________________________________________ #
     # ---------------- PROCESSAMENTO & AQUISIÇÃO -------------- #
@@ -423,8 +520,6 @@ class ExperimentoSequencia:
             })
             return resultado
 
-        #except PyCapture2.Fc2Error as e:
-        #    print(f"Erro na captura: {repr(e)}")
 
         except Exception as e:
             resultado["mensagem"] = str(repr(e))
