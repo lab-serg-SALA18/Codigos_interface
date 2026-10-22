@@ -98,6 +98,22 @@ EXPERIMENTOS = {
             "shutter_time_ms": 20.0,
         },
     },
+    "ODMR_PULSADO": {
+            "nome_exibicao": "ODMR pulsado",
+            "descricao": "Varredura de MW com pulso pi",
+            "grandeza": None,
+            "parametros_padrao": {
+                "mw_freq_center": 3012.2,
+                "mw_freq_range": 30.0,
+                "mw_freq_step": 0.5,
+                "naverage": 20,
+                "mw_power": 0.0,            
+                "pi_pulse_time_ns": 110.0,  
+                "measure_loops": 50,
+                "laser_time_us": 600.0,
+                "backend_photo_on": False,
+            },
+    },
     "RABI": {
         "nome_exibicao": "Rabi",
         "descricao": "Oscilação de Rabi — pulso pi",

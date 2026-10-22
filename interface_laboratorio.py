@@ -84,6 +84,7 @@ CORES = {
 
 CORES_EXPERIMENTOS = {
     "ODMR": (99, 179, 237),
+    "ODMR_PULSADO": (236, 201, 75),
     "RABI": (129, 230, 217),
     "T1": (246, 173, 85),
     "HAN": (245, 101, 101),
@@ -378,7 +379,7 @@ class InterfaceLaboratorio:
         sequencia = self.experimento_selecionado
         params = self._ler_formulario()
 
-        if sequencia != "ODMR":
+        if sequencia not in ("ODMR", "ODMR_PULSADO"):
             if params["time_stop"] <= params["time_start"]:
                 self.mensagem_validacao = "O tempo final deve ser maior que o inicial."
                 return
@@ -400,6 +401,9 @@ class InterfaceLaboratorio:
 
         if sequencia == "ODMR":
             self.thread_execucao = threading.Thread(target=self._executar_odmr_thread, args=(params,), daemon=True)
+        elif sequencia == "ODMR_PULSADO":
+            self.thread_execucao = threading.Thread(
+            target=self._executar_odmr_pulsado_thread, args=(params,), daemon=True)
         else:
             self.thread_execucao = threading.Thread(
                 target=self._executar_sequencia_thread, args=(sequencia, params), daemon=True)
@@ -444,6 +448,34 @@ class InterfaceLaboratorio:
             self._finalizar_resultado(estado, resultado)
         except Exception as e:
             print("Erro detalhado no ODMR:", repr(e))
+            self._finalizar_resultado(estado, None, erro=str(e))
+
+
+
+    def _executar_odmr_pulsado_thread(self, params):
+        estado = self.estado
+        try:
+            import odmr_pulsado
+
+            controlador = odmr_pulsado.ODMRPulsado(
+                mw_freq_center=params["mw_freq_center"],
+                mw_freq_range=params["mw_freq_range"],
+                mw_freq_step=params["mw_freq_step"],
+                naverage=int(params["naverage"]),
+                mw_power=params["mw_power"],
+                pi_pulse_time_ns=params["pi_pulse_time_ns"],
+                measure_loops=int(params["measure_loops"]),
+                laser_time_us=params["laser_time_us"],
+                dynamic_shutter=True,
+                usar_background=params["backend_photo_on"],
+                progress_callback=estado.registrar,
+            )
+            with estado.lock:
+                estado.experimento_atual = controlador
+            resultado = controlador.executar()
+            self._finalizar_resultado(estado, resultado)
+        except Exception as e:
+            print("Erro detalhado no ODMR pulsado:", repr(e))
             self._finalizar_resultado(estado, None, erro=str(e))
 
 

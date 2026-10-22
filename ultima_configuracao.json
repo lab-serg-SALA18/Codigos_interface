@@ -1,11 +1,22 @@
 {
   "ODMR": {
-    "mw_freq_center": 3009.0,
+    "mw_freq_center": 3010.0,
     "mw_freq_range": 15.0,
     "mw_freq_step": 1.0,
-    "naverage": 50,
+    "naverage": 10,
     "mw_power": -20.0,
     "shutter_time_ms": 20.0
+  },
+  "ODMR_PULSADO": {
+    "mw_freq_center": 3010.0,
+    "mw_freq_range": 15.0,
+    "mw_freq_step": 1.0,
+    "naverage": 10,
+    "mw_power": -20.0,
+    "pi_pulse_time_ns": 150.0,
+    "measure_loops": 25,
+    "laser_time_us": 600.0,
+    "backend_photo_on": true
   },
   "RABI": {
     "time_start": 0,
@@ -33,13 +44,13 @@
     "plotar_fit": true
   },
   "HAN": {
-    "time_start": 0,
+    "time_start": 1,
     "time_stop": 5000,
-    "time_step": 25,
+    "time_step": 100,
     "frequency": 3009.2,
     "mw_power": 5.0,
-    "images_average": 100,
-    "measure_loops": 25,
+    "images_average": 10,
+    "measure_loops": 100,
     "laser_time_us": 600,
     "pi_pulse_time_ns": 111,
     "backend_photo_on": true,

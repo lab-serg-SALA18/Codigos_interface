@@ -424,15 +424,6 @@ class ODMRController:
             return resultado
 
         finally:
-            # Ordem deliberada:
-            # 1. desliga MW
-            # 2. encerra câmera
-            # 3. para/libera SpinCore
-            # 4. fecha VISA
-            #
-            # Isso roda tanto em conclusão normal quanto em
-            # cancelamento e exceção.
-
             self.parar_mw()
 
             self.parar_camera()
