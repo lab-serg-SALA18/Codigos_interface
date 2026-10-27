@@ -3,14 +3,11 @@
 Controlador de ODMR, adaptado do odmr.py original.
 
 Principais adições em relação ao original:
-  - ativar_laser_camera_continuo(): substitui o passo manual de abrir o
-    software da SpinCore e carregar o 'ativador_camera.txt' antes de cada
-    ODMR. Programa a mesma sequência (laser + chave de MW + trigger da
-    câmera sempre em nível alto) diretamente por código, usando
-    pb_inst_pbonly.
+  - ativar_laser_camera_continuo(): substitui o passo manual de abrir o 
+    'ativador_camera.pb' antes de cadaODMR. Programa diretamente por código, 
+    usando pb_inst_pbonly.
   - Depois da varredura, detecta automaticamente a(s) ressonância(s) e
-    aponta a de maior contraste (o vale mais fundo do espectro), usando
-    analise_automatica.detectar_ressonancias.
+    aponta a de maior contraste, usando analise_automatica.detectar_ressonancias.
   - progress_callback para a interface gráfica acompanhar o andamento.
   - Liberação completa da SpinCore, câmera e MW mesmo em cancelamento ou erro.
 

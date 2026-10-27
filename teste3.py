@@ -15,14 +15,14 @@ import numpy as np
 # ---------------------------------------------------------------------
 # CONFIGURAÇÃO PADRÃO — edite para coincidir com a medida realizada
 # ---------------------------------------------------------------------
-PASTA_DADOS = Path(r"C:\Users\lab\Desktop\NV\Joao_pedro\HAN\Dados\22_09_2026\22_09_2026--21_53")
+PASTA_DADOS = Path(r"C:\Users\lab\Desktop\NV\Joao_pedro\T1\Dados\21_09_2026\21_09_2026--15_17")
 ARQUIVO_ON = PASTA_DADOS / "Cam_MW_on.h5f"
 ARQUIVO_OFF = PASTA_DADOS / "Cam_MW_off.h5f"
 ARQUIVO_BACKGROUND = PASTA_DADOS / "Cam_background.h5f"
 ARQUIVO_SAIDA = PASTA_DADOS / "pontos_experimentais.csv"
 
-TIME_START_NS = 300.0
-TIME_STEP_NS = 50.0  # Exemplo de Hahn: 0, 500, 1000, ... ns
+TIME_START = 0.0
+TIME_STEP = 1.0  # Exemplo de Hahn: 0, 500, 1000, ... ns
 USAR_BACKGROUND = True
 
 
@@ -39,18 +39,12 @@ def carregar_dataset(caminho):
         if "dataset" not in arquivo:
             chaves = list(arquivo.keys())
             raise KeyError(
-                "O arquivo '{}' não contém a chave 'dataset'. Chaves encontradas: {}".format(
-                    caminho.name, chaves
-                )
-            )
+                "O arquivo '{}' não contém a chave 'dataset'. Chaves encontradas: {}".format(caminho.name, chaves))
         dados = np.asarray(arquivo["dataset"], dtype=np.float64)
 
     if dados.ndim != 3:
         raise ValueError(
-            "Esperava dataset 3D (altura, largura, pontos) em '{}'; forma encontrada: {}".format(
-                caminho.name, dados.shape
-            )
-        )
+            "Esperava dataset 3D (altura, largura, pontos) em '{}'; forma encontrada: {}".format(caminho.name, dados.shape))
     if dados.shape[2] < 1:
         raise ValueError("O arquivo '{}' não contém pontos de medida.".format(caminho.name))
     if not np.all(np.isfinite(dados)):
@@ -88,9 +82,7 @@ def converter(args):
     on = carregar_dataset(caminho_on)
     off = carregar_dataset(caminho_off)
     if on.shape != off.shape:
-        raise ValueError(
-            "ON e OFF têm dimensões diferentes: {} vs {}".format(on.shape, off.shape)
-        )
+        raise ValueError("ON e OFF têm dimensões diferentes: {} vs {}".format(on.shape, off.shape))
 
     soma_on = somar_imagens(on)
     soma_off = somar_imagens(off)
@@ -99,15 +91,11 @@ def converter(args):
         if caminho_background is None:
             raise ValueError(
                 "O background está habilitado, mas nenhum arquivo foi indicado. "
-                "Use --background CAMINHO ou --no-background."
-            )
+                "Use --background CAMINHO ou --no-background.")
         background = carregar_dataset(caminho_background)
         if background.shape != on.shape:
             raise ValueError(
-                "BACKGROUND tem dimensões diferentes: {} vs ON {}".format(
-                    background.shape, on.shape
-                )
-            )
+                "BACKGROUND tem dimensões diferentes: {} vs ON {}".format(background.shape, on.shape))
         soma_background = somar_imagens(background)
         numerador = soma_on - soma_background
         denominador = soma_off - soma_background
@@ -157,37 +145,24 @@ def converter(args):
         print("BACKGROUND shape: {}".format(soma_background.shape))
     print("Número de pontos: {}".format(len(tempos)))
     if len(tempos) > 0:
-        print("Eixo temporal: {:.6g} a {:.6g} ns; passo = {:.6g} ns".format(
-            tempos[0], tempos[-1], args.time_step
-        ))
+        print("Eixo temporal: {:.6g} a {:.6g} ns; passo = {:.6g} ns".format(tempos[0], tempos[-1], args.time_step))
     print("CSV salvo em: {}".format(caminho_saida.resolve()))
 
     invalidos = int(np.count_nonzero(~np.isfinite(razao)))
     if invalidos:
-        print(
-            "Aviso: {} pontos têm razão indefinida (denominador zero/não finito); "
-            "as células correspondentes ficaram vazias no CSV.".format(invalidos),
-            file=sys.stderr,
-        )
+        print("Aviso: {} pontos têm razão indefinida (denominador zero/não finito); "
+            "as células correspondentes ficaram vazias no CSV.".format(invalidos),file=sys.stderr,)
 
 
 def montar_argumentos():
-    parser = argparse.ArgumentParser(
-        description="Converte H5F de aquisição em CSV com um registro por ponto temporal."
-    )
+    parser = argparse.ArgumentParser(description="Converte H5F de aquisição em CSV com um registro por ponto temporal.")
     parser.add_argument("--on", default=str(ARQUIVO_ON), help="Caminho do arquivo MW ON.")
     parser.add_argument("--off", default=str(ARQUIVO_OFF), help="Caminho do arquivo MW OFF.")
-    parser.add_argument(
-        "--background", default=str(ARQUIVO_BACKGROUND),
-        help="Caminho do arquivo de background (usado por padrão)."
-    )
-    parser.add_argument(
-        "--no-background", action="store_true",
-        help="Calcular ON/OFF sem subtrair background."
-    )
+    parser.add_argument("--background", default=str(ARQUIVO_BACKGROUND),help="Caminho do arquivo de background (usado por padrão).")
+    parser.add_argument("--no-background", action="store_true",help="Calcular ON/OFF sem subtrair background.")
     parser.add_argument("--output", default=str(ARQUIVO_SAIDA), help="Caminho do CSV de saída.")
-    parser.add_argument("--time-start", type=float, default=TIME_START_NS, help="Tempo do primeiro ponto em ns.")
-    parser.add_argument("--time-step", type=float, default=TIME_STEP_NS, help="Passo temporal em ns.")
+    parser.add_argument("--time-start", type=float, default=TIME_START, help="Tempo do primeiro ponto em ns.")
+    parser.add_argument("--time-step", type=float, default=TIME_STEP, help="Passo temporal em ns.")
     args = parser.parse_args()
 
     if args.time_step <= 0:

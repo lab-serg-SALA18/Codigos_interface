@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-odmr_pulsado.py — ODMR pulsado (pulsed ODMR) para o laboratório NV.
+ODMR pulsado
 
 Como funciona
 -------------
-No ODMR contínuo (odmr_controller.py) a MW fica ligada o tempo todo e só a
-frequência muda. No pulsado, para cada frequência f a sequência é:
+Para cada frequência f a sequência é:
 
     [preparo com laser] -> [pulso pi em f, MW ligada] -> [leitura: laser + câmera]
 
@@ -14,9 +13,6 @@ idêntica, mas com a MW desligada, é a referência. A razão
 PL(MW on) / PL(MW off) cai quando f está na ressonância, porque o pulso pi
 leva o spin para um estado que emite menos luz na leitura.
 
-O preparo com laser (LASER_DELAY, 350 ns) cai antes do pulso pi: o
-set_turning_on_laser_delay do pulsed_backend pula os pulsos de MW ao procurar
-onde encaixar o laser, então o laser fica entre o início da sequência e a MW.
 
 Por que pulsado
 ---------------

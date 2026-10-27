@@ -139,6 +139,11 @@ def modelo_rabi(t, A, T2s, f_mhz, phi, C, n_exp):
     return (A * np.exp(-((np.maximum(t_rel, 0.0) / T2s) ** n_exp))
             * np.cos(2.0 * np.pi * (f_mhz / 1000.0) * t_rel + phi) + C)
 
+def modelo_exponencial(t, A, T2s, C, n_exp):
+    t = np.asarray(t, dtype=float)
+    t_rel = t - TEMPO_ORIGEM_NS
+    return (A * np.exp(-((np.maximum(t_rel, 0.0) / T2s) ** n_exp))+ C)
+
 
 def calcular_r2(y, yfit):
     residuo = np.sum((y - yfit) ** 2)
@@ -165,8 +170,8 @@ ax = fig.add_axes([0.07, 0.33, 0.60, 0.62])
 linha_dados, = ax.plot(tempos, sinal, "ko", markersize=4, label="Dados do CSV")
 tfit = np.linspace(FIT_INICIO_INICIAL, FIT_FIM_INICIAL, 1200)
 linha_fit, = ax.plot(tfit, modelo_rabi(tfit, A_INICIAL, T2_INICIAL, F_INICIAL_MHZ,
-                                       PHI_INICIAL, C_INICIAL, N_INICIAL),
-                     "r-", linewidth=2, label="Fit")
+                        PHI_INICIAL, C_INICIAL, N_INICIAL),"r-", linewidth=2, label="Fit_senoide")
+linha_expo, = ax.plot(tfit, modelo_exponencial(tfit, A_INICIAL, T2_INICIAL, C_INICIAL, N_INICIAL),"-", linewidth=2, label="Fit_exponencial")
 ax.set_xlabel("Tempo (ns)", fontsize=14)
 ax.set_ylabel("Sinal normalizado", fontsize=14)
 ax.grid(alpha=0.3)
@@ -237,9 +242,10 @@ def atualizar(_event=None):
     r2 = calcular_r2(y, fit)
     t_novo = np.linspace(p["inicio"], p["fim"], 1200)
     linha_fit.set_data(t_novo, modelo_rabi(t_novo, p["A"], p["T2s"], p["f"], p["phi"], p["C"], p["n"]))
+    linha_expo.set_data(t_novo, modelo_exponencial(t_novo, p["A"], p["T2s"], p["C"], p["n"]))
     texto_resultado.set_text(formatar_resultado(p["T2s"], p["f"], p["n"], r2, len(t), " (manual)"))
     ax.relim(); ax.autoscale_view(); fig.canvas.draw_idle()
-
+    print("Atualizado: A = {:.6g}; T2* = {:.6g} ns; f = {:.6g} MHz; phi = {:.6g}; n = {:.5g}; C = {:.6f}".format(p["A"], p["T2s"], p["f"], p["phi"], p["n"], p["C"]))
 
 def ajuste_automatico(_event=None):
     p, t, y = ler_parametros()
@@ -267,6 +273,7 @@ def ajuste_automatico(_event=None):
     r2 = calcular_r2(y, fit)
     t_novo = np.linspace(p["inicio"], p["fim"], 1200)
     linha_fit.set_data(t_novo, modelo_rabi(t_novo, A, T2s, f, phi, C, n_fit))
+    linha_expo.set_data(t_novo, modelo_exponencial(t_novo, A, T2s, C, n_fit))
     extra = " (automático)\nIncertezas: T2* ± {:.3g} ns; f ± {:.3g} MHz; n ± {:.3g}".format(erros[1], erros[2], erros[5])
     avisos = []
     if np.isfinite(r2) and r2 < 0.80:
@@ -281,6 +288,7 @@ def ajuste_automatico(_event=None):
         extra += "\nAVISO: " + "; ".join(avisos)
     texto_resultado.set_text(formatar_resultado(T2s, f, n_fit, r2, len(t), extra))
     ax.relim(); ax.autoscale_view(); fig.canvas.draw_idle()
+    print(extra)
 
 
 botao_atualizar = Button(fig.add_axes([0.74, 0.28, 0.20, 0.05]), "Atualizar")
