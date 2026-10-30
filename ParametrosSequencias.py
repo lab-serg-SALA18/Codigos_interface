@@ -1,17 +1,17 @@
 """
-Gerado automaticamente pela interface do laboratório em 22/10/2026 22:16:53.
+Gerado automaticamente pela interface do laboratório em 30/10/2026 19:39:46.
 NAO EDITE ESTE ARQUIVO A MAO -- a proxima medida feita pela interface
 vai sobrescreve-lo. Para mudar os valores padrao de cada experimento,
 edite configuracoes_lab.py.
 """
 from spinapi import ns, us, ms, s
 
-SEQUENCY = 'T1'
+SEQUENCY = 'RABI'
 
 FREQUENCY = 3009.2
-TIME_ARRAY = range(0, 40000, 100)   # unidade: us
+TIME_ARRAY = range(0, 170, 10)   # unidade: ns
 MW_POWER = 5.0
-IMAGES_AVERAGE = 1
+IMAGES_AVERAGE = 10
 
 LASER_DELAY = 350.0*ns
 PI_PULSE_TIME = 0.0*ns

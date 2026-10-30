@@ -11,7 +11,7 @@ Principais adições em relação ao original:
   - progress_callback para a interface gráfica acompanhar o andamento.
   - Liberação completa da SpinCore, câmera e MW mesmo em cancelamento ou erro.
 
-Roda inteiramente em Python 3.6 (câmera antiga) — não depende do NVserver.py
+Roda em Python 3.6 (câmera antiga) — não depende do NVserver.py
 nem do Qiskit, então não precisa do subprocesso do Python 3.11.
 """
 
@@ -363,7 +363,7 @@ class ODMRController:
 
         plt.xlabel("Frequência de MW (MHz)",fontsize=14,)
 
-        plt.ylabel("PL total (u.a.)",fontsize=14,)
+        plt.ylabel("PL total",fontsize=14,)
 
         plt.title("ODMR",fontsize=16,)
 

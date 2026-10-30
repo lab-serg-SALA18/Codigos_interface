@@ -386,6 +386,10 @@ class InterfaceLaboratorio:
             if params["time_step"] <= 0:
                 self.mensagem_validacao = "O passo de tempo deve ser maior que zero."
                 return
+        elif sequencia == "ODMR_PULSADO":
+            if params["mw_freq_step"] < 0:
+                self.mensagem_validacao = "O passo não pode ser negativo (use 0 para automático)."
+                return
         else:
             if params["mw_freq_step"] <= 0:
                 self.mensagem_validacao = "O passo de frequência deve ser maior que zero."
@@ -464,10 +468,7 @@ class InterfaceLaboratorio:
                 naverage=int(params["naverage"]),
                 mw_power=params["mw_power"],
                 pi_pulse_time_ns=params["pi_pulse_time_ns"],
-                measure_loops=int(params["measure_loops"]),
-                laser_time_us=params["laser_time_us"],
-                dynamic_shutter=True,
-                usar_background=params["backend_photo_on"],
+                leitura_us=params["leitura_us"],
                 progress_callback=estado.registrar,
             )
             with estado.lock:
@@ -655,6 +656,8 @@ class InterfaceLaboratorio:
             rotulo = cfg.ROTULOS_PARAMETROS.get(chave, chave)
             if chave in ("time_start", "time_stop", "time_step") and self._unidade_tempo_atual:
                 rotulo += f" ({self._unidade_tempo_atual})"
+            if chave == "mw_freq_step" and self.experimento_selecionado == "ODMR_PULSADO":
+                rotulo += " (0 = auto)"
             render_rotulo = self.fonte_normal.render(rotulo, True, CORES["texto_secundario"])
             self.tela.blit(render_rotulo, (x, y + 6))
             self.campos[chave].desenhar(self.tela, self.fonte_normal)

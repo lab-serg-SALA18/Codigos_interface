@@ -103,15 +103,13 @@ EXPERIMENTOS = {
         "descricao": "Varredura de MW com pulso pi",
         "grandeza": None,
         "parametros_padrao": {
-            "mw_freq_center": 3012.2,
-            "mw_freq_range": 30.0,
-            "mw_freq_step": 0.5,
+            "mw_freq_center": 3012.2,   
+            "mw_freq_range": 30.0,      
+            "mw_freq_step": 0.0,        # 0 = automático (1/8 da largura de linha do pulso)
             "naverage": 20,
-            "mw_power": 0.0,            
-            "pi_pulse_time_ns": 110.0,  
-            "measure_loops": 50,
-            "laser_time_us": 600.0,
-            "backend_photo_on": False,
+            "mw_power": 5.0,            # use a potência em que o pi foi calibrado
+            "pi_pulse_time_ns": 110.0,  # pulso pi calibrado no Rabi
+            "leitura_us": 600.0,        
         },
     },
     "RABI": {
@@ -291,6 +289,7 @@ ROTULOS_PARAMETROS = {
     "dynamic_shutter": "Shutter dinâmico",
     "backend_photo_on": "Foto de background",
     "plotar_fit" : "Plotar fit",
+    "leitura_us": "Tempo de leitura (us)",
 }
 
 # ======================================================================= #

@@ -1,34 +1,32 @@
 {
   "ODMR": {
     "mw_freq_center": 3010.5,
-    "mw_freq_range": 3.0,
-    "mw_freq_step": 0.1,
-    "naverage": 300,
+    "mw_freq_range": 6.0,
+    "mw_freq_step": 0.5,
+    "naverage": 30,
     "mw_power": -20.0,
     "shutter_time_ms": 20.0
   },
   "ODMR_PULSADO": {
-    "mw_freq_center": 3010.0,
-    "mw_freq_range": 4.0,
-    "mw_freq_step": 0.25,
-    "naverage": 100,
-    "mw_power": -20.0,
-    "pi_pulse_time_ns": 150.0,
-    "measure_loops": 50,
-    "laser_time_us": 600.0,
-    "backend_photo_on": false
+    "mw_freq_center": 3010.5,
+    "mw_freq_range": 6.0,
+    "mw_freq_step": 0.5,
+    "naverage": 30,
+    "mw_power": 5.0,
+    "pi_pulse_time_ns": 90.0,
+    "leitura_us": 1000.0
   },
   "RABI": {
     "time_start": 0,
-    "time_stop": 800,
-    "time_step": 30,
+    "time_stop": 170,
+    "time_step": 10,
     "frequency": 3009.2,
-    "mw_power": -20.0,
-    "images_average": 30,
-    "measure_loops": 100,
+    "mw_power": 5.0,
+    "images_average": 10,
+    "measure_loops": 50,
     "laser_time_us": 600,
-    "dynamic_shutter": false,
-    "backend_photo_on": false,
+    "dynamic_shutter": true,
+    "backend_photo_on": true,
     "plotar_fit": false
   },
   "T1": {

@@ -46,13 +46,13 @@ set_pulse_time = 0b111000000000000000000000
 # consegui então só tinha adicionado 60s de delay pra compensar. Esse problema
 # se resolveu sozinho magicamente, mas deixei a config aqui para caso ele 
 # apareça dnv
-LASER_FALL_TIME = 0.0 * ns # 60
+LASER_FALL_TIME = 60.0 * ns # 60
 
 # Tempo de "aquecimento" (ramp-up) do MW depois que o
 # bit liga. É um atraso DIFERENTE do LASER_FALL_TIME acima -- esse aqui é
 # do lado eletrônico da MW, não do laser -- mas o problema é o mesmo: um
 # delay. De novo, se resolveu sozinho e eu zerei, mas deixei ai pelo mesmo motivo
-MW_RAMP_TIME = 0.0 * ns # 50
+MW_RAMP_TIME = 50.0 * ns # 50
 
 def translate_circuit_to_pulses(circuit, typePhoto):
     # Traduz as portas lógicas do circuito em pulsos de laser e MW.
