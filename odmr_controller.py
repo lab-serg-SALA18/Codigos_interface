@@ -407,9 +407,14 @@ class ODMRController:
 
             fig, caminho_png = self.salvar_dados(df,ressonancias,pasta,)
 
-            resultado.update({"sucesso": True,"df": df,"ressonancias": ressonancias,
+            resultado.update({
+                "sucesso": True,
+                "df": df,
+                "ressonancias": ressonancias,
                 "melhor_ressonancia": (ressonancias[0]if ressonancias else None),
-                "figura": fig,"caminho_grafico": caminho_png,})
+                "figura": fig,
+                "caminho_grafico": caminho_png,
+            })
 
             return resultado
 
