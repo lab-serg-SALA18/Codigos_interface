@@ -18,9 +18,6 @@ Parâmetros lidos
 --------------------
 - Pulso pi e potência de MW: calibrados no Rabi.
 - Tempo de leitura (em µs): informado ao controlador.
-- A temporização LASER_DELAY e o trigger são reutilizados de pulsed_backend.py,
-  o mesmo backend usado pelos experimentos pulsados que já funcionam.
-- O arquivo ParametrosSequencias.py precisa existir, como no programa antigo.
 
 Como roda
 ---------
@@ -28,7 +25,7 @@ Python 3.6, na mesma pasta dos outros módulos.
 """
 
 import os
-import socket
+import socfket
 import time
 import numpy as np
 import pandas as pd
@@ -68,32 +65,56 @@ from pulsed_backend import mw_pulse, measurement_pulse
 
 def largura_linha_pulso_mhz(pi_ns):
     """
-    Largura à meia altura (MHz) da linha de ressonância de um pulso retangular
-    de duração pi_ns que faz uma rotação de pi (Omega * T = pi).
+    Largura à meia altura (MHz) da linha de ressonância de um pulso pi (freq_rabi_em_rad * tempo = pi).
+
+    Isso significa que procuramos probabilidade(delta) = 0.5. Como tempos 2 pontos em que isso acontece,
+    a largura de linha é de + a - o detuning (ou 2*Δ) dividido por 2π para converter de rad/s para Hz, e depois por 1e6 para MHz.
+
+    Simplificando o termo de 2 temos apenas Δ / π em Hz, e depois dividido por 1e6 para MHz.
+
+    Resolvendo numericamente a equação obtemos que f_dwhm =~ 0.7 / t_pi
     """
-    T = float(pi_ns) * 1e-9
-    omega = np.pi / T
+    tempo = float(pi_ns) * 1e-9
+    freq_rabi_em_rad = np.pi / tempo
 
     def probabilidade(delta):
-        s = np.sqrt(omega ** 2 + delta ** 2)
-        return (omega ** 2 / s ** 2) * np.sin(s * T / 2.0) ** 2
+        """
+        A probabilidade de transição após um pulso de duração t, com um detuning
+        (delta) em relação à ressonância, é dada por:
+        """
+        # Ω_eff = √(Ω^2 + Δ^2)
+        freq_rabi_efetivo = np.sqrt(freq_rabi_em_rad ** 2 + delta ** 2)
 
-    lo, hi = 0.0, 1.7 * omega
-    for _ in range(200):
-        meio = 0.5 * (lo + hi)
+        # P(t) = (Ω^2 / Ω_eff^2) * sin^2(Ω_eff * t / 2)
+        return (freq_rabi_em_rad ** 2 / freq_rabi_efetivo ** 2) * np.sin(freq_rabi_efetivo * tempo / 2.0) ** 2
+        #OBS: Se o detuning fosse zero, a probabilidade seria 1.0 (pulso pi perfeito)
+
+    # Δ_low = 0.0, Δ_high = 1.7 * freq_rabi_em_rad, esses são chutes iniciais
+    low, high = 0.0, 1.7 * freq_rabi_em_rad
+    for _ in range(200): # método da bisseção para encontrar o detuning que dá probabilidade 0.5
+        meio = 0.5 * (low + high)
         if probabilidade(meio) > 0.5:
-            lo = meio
+            low = meio
         else:
-            hi = meio
-    return 2.0 * lo / (2.0 * np.pi) / 1e6
+            high = meio
+
+    return (low / np.pi * 1e6) # Δ / π em MHz
 
 
 def pulso_para_linha(largura_alvo_mhz, pi_ns_atual):
     """
     Duração de pi (ns) para obter uma linha de largura_alvo_mhz, e quantos dB a
     potência de MW precisa cair em relação ao pi_ns_atual.
+
+    Equação -> largura_alvo_mhz =~ 0.7 / t_pi * ns - > t_pi = (0.7 / largura_alvo_hz) * 1e9
+
+    A reducao vem da equação -> pot_nova/pot_atual = (t_pi_atual / t_pi_novo)^2
+    Δpot = 10 * log10(pot_nova/pot_atual) = log10((t_pi_atual / t_pi_novo^)2) = 
+    20 * log10((t_pi_atual / t_pi_novo) = -20 * log10(t_pi_novo / t_pi_atual)
+
+    Como Δpot é negativa, precisamos diminuir. Em vez de mostrar um valor negativo eu chamei de redução
     """
-    T_novo = 0.795 / (largura_alvo_mhz * 1e6) * 1e9
+    T_novo = 0.798685 / (largura_alvo_mhz * 1e6) * 1e9
     reducao_db = 20.0 * np.log10(T_novo / pi_ns_atual)
     return T_novo, reducao_db
 
@@ -110,7 +131,6 @@ def imagem_para_array(imagem):
 
 def lorentziana(f, f0, g, A, c):
     return c - A * g ** 2 / ((f - f0) ** 2 + g ** 2)
-
 
 
 # ======================================================================= #
@@ -164,64 +184,9 @@ class ODMRPulsado:
         self.spincore_ativa = False
         self.cancelado = False
 
-        self._shutter_atual_ms = None
+        self.shutter_atual_ms = None
 
-    # ------------------------------------------------------------------ #
-    # ORQUESTRAÇÃO
-    # ------------------------------------------------------------------ #
-
-    def executar(self):
-        resultado = {"sucesso": False}
-
-        try:
-            freqs = self._grade(self.mw_freq_center, self.mw_freq_range)
-            self._anunciar_plano(freqs)
-
-            self.iniciar_hardware()
-
-            cal = self._calibrar()
-
-            modelo_fundo = self._modelo("back", cal["n_ciclos"])
-            fundo_inicio = self._medir(modelo_fundo)[0]
-            sinal, t_sinal, t_ref, v_ref = self.rodar_aquisicao(freqs, cal)
-
-            if self.cancelado:
-                resultado["mensagem"] = ("ODMR pulsado cancelado pelo usuário.")
-                return resultado
-            
-            fundo_fim = self._medir(modelo_fundo)[0]
-            fundo = 0.5 * (fundo_inicio + fundo_fim)
-
-            pl, _ = self._espectro(sinal, t_sinal, t_ref, v_ref, fundo)
-            vales = analise.detectar_ressonancias(freqs, pl)
-            vales = self._ajustar_vales(freqs, pl, vales)
-            fig, caminho_png, caminho_csv = self.salvar_dados(freqs, pl, vales)
-
-            resultado.update({
-                "sucesso": True,
-                "df": pd.DataFrame({"mw_freq": freqs, "PL_normalizado": pl}),
-                "ressonancias": vales,
-                "melhor_ressonancia": vales[0] if vales else None,
-                "figura": fig,
-                "caminho_grafico": caminho_png,
-                "caminho_dados": caminho_csv,
-                "largura_pulso_mhz": self.largura_mhz,
-                "mw_freq_step": self.mw_freq_step,
-            })
-            return resultado
-
-        except Exception as e:
-            resultado["mensagem"] = str(e)
-            self.progress_callback(mensagem="Erro: %s" % e)
-            return resultado
-
-        finally:
-            self.encerrar_hardware()
-
-    def _checar_cancelamento(self):
-        if self.cancelado:
-            raise RuntimeError("Cancelado pelo usuário.")
-
+   
     # ------------------------------------------------------------------ #
     # PLANO DA VARREDURA
     # ------------------------------------------------------------------ #
@@ -278,6 +243,7 @@ class ODMRPulsado:
                     self.progress_callback(mensagem=(
                         f"Aviso: instrução {indice} com duração {instrucao:.1f} ns abaixo do mínimo da placa; ajustada para {duracao} ns."))
                 pb_inst_pbonly(pulso[0], pulso[1], pulso[2], duracao)
+                # esses pulsos correspondem a pulsos de laser, mw e leitura
             except Exception as e:
                 try:
                     pb_stop_programming()
@@ -325,8 +291,13 @@ class ODMRPulsado:
         self.camera.startCapture()
 
     def configurar_trigger(self):
-        trigger = self.camera.getTriggerMode()
+        """
+        Coloca a câmera em modo de trigger externo (onOff=True), com polaridade ALTA (polarity=1), 
+        para que a exposição seja disparada pelo pulso 'camera_on'.
 
+        mode=0 e source=0 são o padrão para câmeras Point Grey com um único pino de trigger (GPIO 0). 
+        """
+        trigger = self.camera.getTriggerMode()
         trigger.onOff = True
         trigger.polarity = 1 
         trigger.mode = 0
@@ -335,37 +306,45 @@ class ODMRPulsado:
 
         self.camera.setTriggerMode(trigger)
 
-    def _ajustar_shutter(self, duracao_ms):
+    def ajustar_shutter(self, duracao_ms):
         """Recalcula o shutter para a sequência que vai rodar. Não mexe na câmera se não mudou."""
-        if self._shutter_atual_ms is not None and abs(duracao_ms - self._shutter_atual_ms) < 1e-6:
-            return
+        if self.shutter_atual_ms is not None:
+            if abs(duracao_ms - self.shutter_atual_ms) < 1e-6:
+                return
+        
         shutter = self.camera.getProperty(PyCapture2.PROPERTY_TYPE.SHUTTER)
         shutter.autoManualMode = False
         shutter.onOff = True
         shutter.absControl = True
         shutter.absValue = float(duracao_ms)
         self.camera.setProperty(shutter)
-        self._shutter_atual_ms = float(duracao_ms)
+        self.shutter_atual_ms = float(duracao_ms)
 
-    def _medir_bruto(self, modelo):
-        """
-        Dispara uma leitura e devolve (soma da região útil, pixel mais forte, tempo do ciclo em s).
-        O shutter é ajustado antes de programar, para que a exposição já use a duração certa.
-        """
-        pulsos, duracao_ns = modelo
-        self._ajustar_shutter(duracao_ns * 1e-6)
-        self.programar(pulsos)
-        inicio = time.time()
-        imagem = self.camera.retrieveBuffer()  # levanta Fc2error se o frame não chegar
-        t_ciclo = time.time() - inicio
-        roi = imagem_para_array(imagem)
-        return float(np.sum(roi)), float(np.max(roi)), t_ciclo
 
-    def _medir(self, modelo):
+    def medir(self, modelo):
+        """
+        Dispara uma leitura e devolve (soma dos pixels, pixel mais forte, tempo do ciclo em s).
+        O shutter é ajustado automaticamente antes de programar.
+        """
         try:
-            return self._medir_bruto(modelo)
-        except PyCapture2.Fc2error as e:
-            raise RuntimeError("A câmera não entregou o frame. Confira o cabo de trigger" )
+            pulsos, duracao_ns = modelo
+
+            self.ajustar_shutter(duracao_ns * 1e-6)
+            self.programar(pulsos)
+
+            inicio = time.time()
+            imagem = self.camera.retrieveBuffer()  # levanta Fc2error se o frame não chegar
+            t_ciclo = time.time() - inicio
+
+            sinal = imagem_para_array(imagem)
+                    
+            return float(np.sum(sinal)), float(np.max(sinal)), t_ciclo
+        
+        except PyCapture2.Fc2error:
+            raise RuntimeError("A câmera não entregou o frame. Confira o cabo de trigger")
+        
+        except Exception as e:
+            raise RuntimeError(f"Falha ao medir: {e}")
 
     def encerrar_hardware(self):
         """MW desligada, câmera parada, placa com tudo apagado e fechada. Roda sempre."""
@@ -446,13 +425,13 @@ class ODMRPulsado:
         return int(pre_ns + int(n_ciclos) * ciclo_ns + cauda_ns)
 
     def _modelo(self, tipo, n_ciclos):
-        """Monta a sequência com o backend já usado nos experimentos pulsados."""
-        if tipo not in ("mw_on", "mw_off", "back"):
-            raise ValueError("Tipo de sequência desconhecido: %r" % (tipo,))
-
-        # A mesma sequência validada no programa antigo: pulso MW + measurement_pulse.
-        # measurement_pulse aplica LASER_DELAY, faz a leitura e desliga MW/laser
-        # corretamente conforme o tipo de foto.
+        """
+        Monta a sequência com o backend já usado nos experimentos pulsados:
+        pulso MW + measurement_pulse.
+        
+        measurement_pulse aplica LASER_DELAY, faz a leitura e desliga MW/laser
+        corretamente conforme o tipo de foto.
+        """
         pulsos = [mw_pulse(int(round(self.pi_pulse_time_ns)))]
         pulsos, _duracao_ms_backend = measurement_pulse(
             pulsos,
@@ -476,6 +455,7 @@ class ODMRPulsado:
         n = int(round((float(duracao_ms) * 1e6 - fixo_ns) / float(ciclo_ns)))
         return max(1, n)
 
+
     def _calibrar(self):
         """
         Escolhe a duração de cada leitura da câmera.
@@ -490,11 +470,12 @@ class ODMRPulsado:
         modelo_cal = self._modelo("mw_off", n_cal)
         dur_cal_ms = modelo_cal[1] * 1e-6
 
-        # A câmera pode perder o primeiro trigger. Tenta de novo antes de desistir.
+        # A câmera pode perder o primeiro trigger. Tenta 5 vezes antes de desistir.
         for tentativa in range(1, 6):
-            self._checar_cancelamento()
+            if self.cancelado:
+                raise RuntimeError("Cancelado pelo usuário.")
             try:
-                self._medir_bruto(modelo_cal)
+                self.medir(modelo_cal)
                 break
             except PyCapture2.Fc2error as e:
                 self.progress_callback(
@@ -503,10 +484,10 @@ class ODMRPulsado:
         else:
             raise RuntimeError("A câmera não respondeu ao trigger. Confira o cabo de trigger.")
 
-        _, pico, t_ciclo = self._medir(modelo_cal)
+        _, pico, t_ciclo = self.medir(modelo_cal)
         # O pixel nunca vale zero, porque a câmera tem nível de escuro. Por isso
         # comparo com o fundo medido no mesmo tempo de leitura.
-        _, pico_fundo, _ = self._medir(self._modelo("back", n_cal))
+        _, pico_fundo, _ = self.medir(self._modelo("back", n_cal))
         sinal_pico = pico - pico_fundo
         if sinal_pico <= 0:
             raise RuntimeError("A câmera não viu luz na calibração. Confira laser, AOM, trigger e foco.")
@@ -544,11 +525,6 @@ class ODMRPulsado:
             "avisos": avisos,
         }
 
-    def _ciclo_us(self):
-        _, d1 = self._modelo("mw_off", 1)
-        _, d2 = self._modelo("mw_off", 2)
-        return (d2 - d1) / 1000.0
-
 
     # ------------------------------------------------------------------ #
     # VARREDURA
@@ -566,7 +542,7 @@ class ODMRPulsado:
             tempo_restante=restante,
         )
 
-    def rodar_aquisicao(self, freqs, cal):
+    def _rodar_aquisicao(self, freqs, cal):
         """
         Mede o sinal (MW on) em cada frequência, em cada média. A referência
         (MW off) é medida a cada N pontos, e o instante de cada uma é guardado
@@ -600,7 +576,7 @@ class ODMRPulsado:
                         break
 
                     if idx % 1 == 0:
-                        v_ref.append(self._medir(modelo_ref)[0])
+                        v_ref.append(self.medir(modelo_ref)[0])
                         t_ref.append(contador)
                         contador += 1
                         barra.update(1)
@@ -608,14 +584,15 @@ class ODMRPulsado:
 
                     self.definir_frequencia_mw(f)
 
-                    t_estabilizacao = self._shutter_atual_ms / 1e3 + 0.01
+                    t_estabilizacao = self.shutter_atual_ms / 1e3 + 0.01
                     time.sleep(t_estabilizacao)
 
-                    sinal_total[media, idx] = self._medir(modelo_on)[0]
+                    sinal_total[media, idx] = self.medir(modelo_on)[0]
                     t_sinal[media, idx] = contador
                     contador += 1
                     barra.update(1)
                     self._publicar(barra)
+
                 if not self.cancelado:
                     self.progress_callback(
                         progresso=(media * n_freqs + idx + 1) / (self.naverage * n_freqs),
@@ -713,6 +690,7 @@ class ODMRPulsado:
     
         return caminho
 
+
     def enviar_aviso_telegram(self, mensagem, caminho_imagem=None):
         if not cfg.TELEGRAM_ATIVO_PADRAO:
             return
@@ -744,7 +722,7 @@ class ODMRPulsado:
             f"{self.naverage}avarages_"
             f"{self.mw_power}dB_"
             f"{self.pi_pulse_time_ns}ns_pi_"
-            f"{self.leitura_ns / 1000.0}ns_leitura_"
+            f"{self.leitura_ns / 1000.0}µs_leitura_"
             f"{time.strftime('%Y-%m-%d_%H-%M')}"
         )
 
@@ -809,3 +787,56 @@ class ODMRPulsado:
         self.enviar_aviso_telegram(msg, caminho_png)
         
         return fig, caminho_png, caminho_csv
+
+ # ------------------------------------------------------------------ #
+    # PIPELINE
+    # ------------------------------------------------------------------ #
+
+    def _executar(self):
+        resultado = {"sucesso": False}
+
+        try:
+            freqs = self._grade(self.mw_freq_center, self.mw_freq_range)
+            self._anunciar_plano(freqs)
+
+            self.iniciar_hardware()
+
+            cal = self._calibrar()
+
+            modelo_fundo = self._modelo("back", cal["n_ciclos"])
+            fundo_inicio = self.medir(modelo_fundo)[0]
+            sinal, t_sinal, t_ref, v_ref = self._rodar_aquisicao(freqs, cal)
+
+            if self.cancelado:
+                resultado["mensagem"] = ("ODMR pulsado cancelado pelo usuário.")
+                return resultado
+            
+            fundo_fim = self.medir(modelo_fundo)[0]
+            fundo = 0.5 * (fundo_inicio + fundo_fim)
+
+            pl, _ = self._espectro(sinal, t_sinal, t_ref, v_ref, fundo)
+            vales = analise.detectar_ressonancias(freqs, pl)
+            vales = self._ajustar_vales(freqs, pl, vales)
+
+            fig, caminho_png, caminho_csv = self.salvar_dados(freqs, pl, vales)
+
+            resultado.update({
+                "sucesso": True,
+                "df": pd.DataFrame({"mw_freq": freqs, "PL_normalizado": pl}),
+                "ressonancias": vales,
+                "melhor_ressonancia": vales[0] if vales else None,
+                "figura": fig,
+                "caminho_grafico": caminho_png,
+                "caminho_dados": caminho_csv,
+                "largura_pulso_mhz": self.largura_mhz,
+                "mw_freq_step": self.mw_freq_step,
+            })
+            return resultado
+
+        except Exception as e:
+            resultado["mensagem"] = str(e)
+            self.progress_callback(mensagem="Erro: %s" % e)
+            return resultado
+
+        finally:
+            self.encerrar_hardware()
